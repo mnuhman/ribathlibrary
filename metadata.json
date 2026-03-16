@@ -1,0 +1,7 @@
+{
+  "name": "RIBATH LIBRARY Mobile",
+  "description": "A comprehensive mobile-optimized library management system for Android devices, featuring barcode scanning, offline support, and real-time transaction tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
