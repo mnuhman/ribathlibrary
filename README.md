@@ -6,7 +6,7 @@
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: ribathlibrary.netlify.app
+View your app in AI Studio: https://ribathlibrary.netlify.app
 
 ## Run Locally
 
