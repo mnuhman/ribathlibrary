@@ -20,7 +20,6 @@ import {
   Filter,
   X,
   Camera,
-  LogOut,
   Settings,
   FileText,
   CreditCard,
@@ -613,6 +612,47 @@ export default function App() {
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
     const [manualId, setManualId] = useState('');
+    const [permissionState, setPermissionState] = useState<'granted' | 'prompt' | 'denied' | 'loading'>('loading');
+
+    const checkPermission = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setPermissionState('denied');
+        setScanError("Your browser does not support camera access. Please use a modern browser.");
+        return;
+      }
+
+      try {
+        const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        setPermissionState(result.state as any);
+        result.onchange = () => {
+          setPermissionState(result.state as any);
+        };
+      } catch (e) {
+        // Fallback for browsers that don't support permissions.query for camera
+        setPermissionState('prompt');
+      }
+    };
+
+    const requestPermission = async () => {
+      setScanError(null);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop());
+        setPermissionState('granted');
+      } catch (err: any) {
+        console.error("Permission error:", err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setPermissionState('denied');
+          setScanError("Camera access was denied. Please click the camera icon in your browser's address bar to reset permissions.");
+        } else {
+          setScanError("Could not access camera. Please ensure it's not being used by another app.");
+        }
+      }
+    };
+
+    useEffect(() => {
+      checkPermission();
+    }, []);
 
     const handleManualSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -716,6 +756,72 @@ export default function App() {
               Cancel Scanning
             </button>
           </div>
+        ) : permissionState === 'denied' ? (
+          <div className="flex flex-col items-center gap-6 text-center">
+            <div className="p-6 bg-crimson/10 rounded-full text-crimson">
+              <Camera size={48} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Camera Blocked</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-[280px]">
+                Camera access is denied. To use the scanner, you must enable camera permissions in your browser settings.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 w-full max-w-[280px]">
+              <button 
+                onClick={requestPermission}
+                className="btn-primary"
+              >
+                Try Again
+              </button>
+              
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200 dark:border-slate-700"></span></div>
+                <div className="relative flex justify-center text-[10px] uppercase"><span className="bg-white dark:bg-slate-900 px-2 text-slate-400 font-bold">Or enter manually</span></div>
+              </div>
+
+              <form onSubmit={handleManualSubmit} className="flex gap-2">
+                <input 
+                  value={manualId}
+                  onChange={(e) => setManualId(e.target.value)}
+                  placeholder="Enter ISBN or User ID"
+                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-black/5 dark:border-white/5 rounded-xl px-3 py-2 text-xs focus:outline-none dark:text-white"
+                />
+                <button type="submit" className="p-2 bg-medium-indigo text-white rounded-xl">
+                  <ArrowRightLeft size={16} />
+                </button>
+              </form>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-black/5 dark:border-white/5 mt-2">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  Tip: If you're stuck, try opening this app in a <strong>new tab</strong> using the icon in the top right.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : permissionState === 'prompt' ? (
+          <div className="flex flex-col items-center gap-6 text-center">
+            <div className="p-6 bg-medium-indigo/10 rounded-full text-medium-indigo">
+              <Camera size={48} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Camera Access Required</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-[280px]">
+                To scan barcodes and QR codes, we need your permission to use the camera.
+              </p>
+            </div>
+            <button 
+              onClick={requestPermission}
+              className="btn-primary px-8"
+            >
+              Grant Camera Access
+            </button>
+          </div>
+        ) : permissionState === 'loading' ? (
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-medium-indigo/20 border-t-medium-indigo rounded-full animate-spin" />
+            <p className="text-sm text-slate-500 font-medium">Checking permissions...</p>
+          </div>
         ) : (
           <>
             <div className="relative w-64 h-64">
@@ -798,13 +904,6 @@ export default function App() {
           </div>
         </div>
 
-        <div className="mobile-card p-6 flex flex-col items-center gap-3 bg-gradient-to-br from-deep-indigo to-medium-indigo text-white border-none">
-          <div className="text-center">
-            <h3 className="text-lg font-bold">Zack Moon</h3>
-            <p className="text-xs text-white/70 font-medium uppercase tracking-widest">Library Administrator</p>
-          </div>
-        </div>
-
         <div className="flex flex-col gap-2">
           {menuItems.map((item, i) => (
             <button 
@@ -820,13 +919,6 @@ export default function App() {
             </button>
           ))}
         </div>
-
-        <button className="mobile-card p-4 flex items-center gap-4 text-crimson active:bg-crimson/5 transition-colors">
-          <div className="p-2 rounded-xl bg-crimson/10">
-            <LogOut size={20} />
-          </div>
-          <span className="flex-1 text-left text-sm font-bold">Logout Session</span>
-        </button>
 
         <div className="text-center py-4">
           <p className="text-[10px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-[0.2em]">{settings.libraryName} Mobile v1.0</p>
