@@ -28,8 +28,6 @@ import {
   Mail,
   Calendar,
   Edit,
-  Moon,
-  Sun,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -229,10 +227,6 @@ export default function App() {
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('ribath_darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('ribath_settings');
     const defaults = {
@@ -248,15 +242,6 @@ export default function App() {
     }
     return defaults;
   });
-
-  useEffect(() => {
-    localStorage.setItem('ribath_darkMode', JSON.stringify(darkMode));
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
 
   useEffect(() => {
     localStorage.setItem('ribath_settings', JSON.stringify(settings));
@@ -403,18 +388,18 @@ export default function App() {
           <div className="h-48 w-full min-h-[192px]">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#334155" : "#E2E8F0"} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: darkMode ? '#94A3B8' : '#64748B' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: darkMode ? '#94A3B8' : '#64748B' }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} />
                 <Tooltip 
                   contentStyle={{ 
                     borderRadius: '12px', 
                     border: 'none', 
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    backgroundColor: darkMode ? '#1E293B' : '#FFFFFF',
-                    color: darkMode ? '#FFFFFF' : '#000000'
+                    backgroundColor: '#FFFFFF',
+                    color: '#000000'
                   }}
-                  cursor={{ fill: darkMode ? '#334155' : '#F1F5F9' }}
+                  cursor={{ fill: '#F1F5F9' }}
                 />
                 <Bar dataKey="issues" fill={COLORS.mediumIndigo} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="returns" fill={COLORS.emerald} radius={[4, 4, 0, 0]} />
@@ -811,12 +796,6 @@ export default function App() {
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">Account</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">Manage your library profile</p>
           </div>
-          <button 
-            onClick={() => setDarkMode(!darkMode)}
-            className="p-3 bg-white dark:bg-slate-900 border border-black/5 dark:border-white/5 rounded-2xl text-slate-600 dark:text-slate-400 active:scale-95 transition-all shadow-sm"
-          >
-            {darkMode ? <Sun size={20} className="text-amber" /> : <Moon size={20} className="text-medium-indigo" />}
-          </button>
         </div>
 
         <div className="mobile-card p-6 flex flex-col items-center gap-3 bg-gradient-to-br from-deep-indigo to-medium-indigo text-white border-none">
@@ -938,32 +917,6 @@ export default function App() {
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-black/5 dark:border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-medium-indigo/10 text-medium-indigo dark:text-indigo-400 rounded-xl">
-                  {darkMode ? <Moon size={20} /> : <Sun size={20} />}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Dark Mode</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Switch between light and dark themes</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setDarkMode(!darkMode)}
-                className={cn(
-                  "w-14 h-7 rounded-full relative transition-all duration-500 ease-in-out p-1",
-                  darkMode ? "bg-medium-indigo" : "bg-slate-200"
-                )}
-              >
-                <div className={cn(
-                  "w-5 h-5 bg-white rounded-full shadow-md transition-all duration-500 ease-in-out flex items-center justify-center",
-                  darkMode ? "translate-x-7" : "translate-x-0"
-                )}>
-                  {darkMode ? <Moon size={10} className="text-medium-indigo" /> : <Sun size={10} className="text-amber" />}
-                </div>
-              </button>
-            </div>
-
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase ml-1">Library Name</label>
               <input 
@@ -1073,7 +1026,6 @@ export default function App() {
                   categories: ['Fiction', 'Classic', 'Dystopian', 'Science']
                 };
                 setSettings(defaults);
-                setDarkMode(false);
               }}
               className="flex-1 px-4 py-3 rounded-xl border border-black/5 dark:border-white/5 text-slate-500 dark:text-slate-400 text-sm font-bold active:scale-95 transition-transform"
             >
