@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Book, User } from './types';
+import { Book, User, Fine } from './types';
 
 export const COLORS = {
   deepIndigo: '#1A237E',
@@ -82,5 +82,24 @@ export const INITIAL_USERS: User[] = [
     expiryDate: '2026-12-31',
     outstandingFines: 150,
     profilePhoto: 'https://i.pravatar.cc/150?u=102',
+  },
+];
+
+export const INITIAL_FINES: Fine[] = [
+  {
+    id: 'f1',
+    userId: '102',
+    bookId: '3',
+    amount: 150,
+    date: '2026-03-15',
+    status: 'Unpaid',
+  },
+  {
+    id: 'f2',
+    userId: '101',
+    bookId: '2',
+    amount: 50,
+    date: '2026-02-20',
+    status: 'Paid',
   },
 ];

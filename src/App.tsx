@@ -46,9 +46,13 @@ import { format, addDays, isAfter, parseISO, subDays, startOfMonth, isWithinInte
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import { QRCodeSVG } from 'qrcode.react';
+
+import { GoogleGenAI } from "@google/genai";
+import ReactMarkdown from 'react-markdown';
 
 import { Book, User, Transaction, Fine } from './types';
-import { INITIAL_BOOKS, INITIAL_USERS, COLORS } from './constants';
+import { INITIAL_BOOKS, INITIAL_USERS, INITIAL_FINES, COLORS } from './constants';
 
 // --- Utility ---
 function cn(...inputs: ClassValue[]) {
@@ -62,6 +66,7 @@ const BottomNav = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTa
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'books', label: 'Books', icon: BookIcon },
     { id: 'scan', label: 'Scan', icon: QrCode },
+    { id: 'trends', label: 'Trends', icon: TrendingUp },
     { id: 'users', label: 'Users', icon: UsersIcon },
     { id: 'more', label: 'More', icon: MoreHorizontal },
   ];
@@ -81,7 +86,7 @@ const BottomNav = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTa
             )}
           >
             <Icon size={isActive ? 24 : 22} strokeWidth={isActive ? 2.5 : 2} />
-            <span className="mt-1">{tab.label}</span>
+            <span className="mt-1 text-[8px] font-bold uppercase tracking-tighter">{tab.label}</span>
             {isActive && (
               <motion.div 
                 layoutId="activeTab"
@@ -124,6 +129,34 @@ const StatCard = ({ label, value, icon: Icon, color, trend }: any) => (
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [webTrends, setWebTrends] = useState<string | null>(null);
+  const [isWebTrendsLoading, setIsWebTrendsLoading] = useState(false);
+
+  const fetchWebTrends = async () => {
+    setIsWebTrendsLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "What are the top 5 modern features for a library management system in 2026? Provide a concise summary for each.",
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      });
+      setWebTrends(response.text);
+    } catch (error) {
+      console.error("Web trends error:", error);
+      setWebTrends("Failed to fetch trends. Please try again later.");
+    } finally {
+      setIsWebTrendsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'trends' && !webTrends) {
+      fetchWebTrends();
+    }
+  }, [activeTab]);
   const [books, setBooks] = useState<Book[]>(() => {
     const saved = localStorage.getItem('ribath_books');
     return saved ? JSON.parse(saved) : INITIAL_BOOKS;
@@ -131,6 +164,10 @@ export default function App() {
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('ribath_users');
     return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
+  const [fines, setFines] = useState<Fine[]>(() => {
+    const saved = localStorage.getItem('ribath_fines');
+    return saved ? JSON.parse(saved) : INITIAL_FINES;
   });
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('ribath_transactions');
@@ -144,6 +181,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ribath_users', JSON.stringify(users));
   }, [users]);
+
+  useEffect(() => {
+    localStorage.setItem('ribath_fines', JSON.stringify(fines));
+  }, [fines]);
 
   useEffect(() => {
     localStorage.setItem('ribath_transactions', JSON.stringify(transactions));
@@ -252,8 +293,13 @@ export default function App() {
   const [isBookDetailsOpen, setIsBookDetailsOpen] = useState(false);
   const [isUserDetailsOpen, setIsUserDetailsOpen] = useState(false);
   const [isFineModalOpen, setIsFineModalOpen] = useState(false);
+  const [isFineManagementOpen, setIsFineManagementOpen] = useState(false);
+  const [isAddFineModalOpen, setIsAddFineModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
+  const [fineFilter, setFineFilter] = useState<'Paid' | 'Unpaid'>('Unpaid');
+  const [isQRCodeModalOpen, setIsQRCodeModalOpen] = useState(false);
+  const [qrCodeData, setQRCodeData] = useState<{ value: string, title: string } | null>(null);
 
   const [isEditingBook, setIsEditingBook] = useState(false);
   const [isEditingUser, setIsEditingUser] = useState(false);
@@ -330,6 +376,17 @@ export default function App() {
   const handleReturnBook = (bookId: string) => {
     const book = books.find(b => b.id === bookId);
     if (book && book.status !== 'Available') {
+      const isOverdue = book.status === 'Overdue' || (book.dueDate && isAfter(new Date(), parseISO(book.dueDate)));
+      let fineAmount = 0;
+      
+      if (isOverdue && book.dueDate) {
+        const diffTime = Math.abs(new Date().getTime() - parseISO(book.dueDate).getTime());
+        const daysLate = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (daysLate > 0) {
+          fineAmount = daysLate * settings.finePerDay;
+        }
+      }
+
       setBooks(books.map(b => b.id === bookId ? { 
         ...b, 
         status: 'Available', 
@@ -337,12 +394,29 @@ export default function App() {
         dueDate: undefined 
       } : b));
 
+      if (fineAmount > 0) {
+        const newFine: Fine = {
+          id: `f-${Math.random().toString(36).substr(2, 9)}`,
+          userId: book.borrowerId!,
+          bookId,
+          amount: fineAmount,
+          date: new Date().toISOString(),
+          status: 'Unpaid'
+        };
+        setFines(prev => [newFine, ...prev]);
+        setUsers(prev => prev.map(u => u.id === book.borrowerId ? { 
+          ...u, 
+          outstandingFines: u.outstandingFines + fineAmount 
+        } : u));
+      }
+
       const newTransaction: Transaction = {
         id: Math.random().toString(36).substr(2, 9),
         bookId,
         userId: book.borrowerId!,
         type: 'Return',
         date: new Date().toISOString(),
+        fineAmount: fineAmount > 0 ? fineAmount : undefined,
         status: 'Completed'
       };
       setTransactions([newTransaction, ...transactions]);
@@ -946,11 +1020,50 @@ export default function App() {
     );
   };
 
+  const TrendsView = () => (
+    <div className="flex flex-col gap-6 pb-24 px-6 pt-4">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white">Modern Library Trends</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Powered by Gemini & Google Search</p>
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-black/5 dark:border-white/5 shadow-sm min-h-[400px]">
+        {isWebTrendsLoading ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
+            <div className="w-10 h-10 border-4 border-medium-indigo border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-bold text-slate-400">Searching the web...</p>
+          </div>
+        ) : webTrends ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown>{webTrends}</ReactMarkdown>
+            <button 
+              onClick={fetchWebTrends}
+              className="mt-8 w-full py-4 text-xs font-bold text-medium-indigo bg-medium-indigo/10 rounded-2xl active:scale-95 transition-transform"
+            >
+              Refresh Trends
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
+            <TrendingUp size={48} className="text-slate-200" />
+            <p className="text-sm text-slate-400">No trends data available.</p>
+            <button 
+              onClick={fetchWebTrends}
+              className="mt-4 px-6 py-3 text-xs font-bold text-white bg-medium-indigo rounded-xl active:scale-95 transition-transform"
+            >
+              Fetch Latest Trends
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const MoreView = () => {
     const menuItems = [
       { icon: History, label: 'Transaction History', color: COLORS.mediumIndigo, action: () => setIsHistoryOpen(true) },
       { icon: FileText, label: 'Reports & Analytics', color: COLORS.emerald, action: () => setIsReportsOpen(true) },
-      { icon: CreditCard, label: 'Fine Management', color: COLORS.amber, action: () => setActiveTab('users') },
+      { icon: CreditCard, label: 'Fine Management', color: COLORS.amber, action: () => setIsFineManagementOpen(true) },
       { icon: Settings, label: 'App Settings', color: COLORS.neutralGray, action: () => setIsSettingsOpen(true) },
     ];
 
@@ -992,6 +1105,7 @@ export default function App() {
       case 'books': return <BooksView />;
       case 'users': return <UsersView />;
       case 'scan': return <ScanView />;
+      case 'trends': return <TrendsView />;
       case 'more': return <MoreView />;
       default: return <DashboardView />;
     }
@@ -1003,6 +1117,7 @@ export default function App() {
       case 'books': return 'Book Catalog';
       case 'users': return 'User Directory';
       case 'scan': return 'Quick Scan';
+      case 'trends': return 'Modern Trends';
       case 'more': return 'System Menu';
       default: return settings.libraryName;
     }
@@ -1501,6 +1616,16 @@ export default function App() {
                   </button>
                 )}
                 <button 
+                  onClick={() => {
+                    setQRCodeData({ value: selectedBook.id, title: `Book: ${selectedBook.title}` });
+                    setIsQRCodeModalOpen(true);
+                  }}
+                  className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl active:scale-95 transition-transform"
+                  title="Generate QR Code"
+                >
+                  <QrCode size={24} />
+                </button>
+                <button 
                   onClick={() => handleDeleteBook(selectedBook.id)}
                   className="p-4 bg-crimson/10 text-crimson rounded-2xl active:scale-95 transition-transform"
                 >
@@ -1633,6 +1758,15 @@ export default function App() {
               </div>
 
               <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    setIsUserDetailsOpen(false);
+                    setIsAddFineModalOpen(true);
+                  }}
+                  className="flex-1 py-4 text-sm font-bold text-amber bg-amber/10 rounded-2xl active:scale-95 transition-transform"
+                >
+                  Add Fine
+                </button>
                 {selectedUser.outstandingFines > 0 && (
                   <button 
                     onClick={() => {
@@ -1644,6 +1778,16 @@ export default function App() {
                     Pay Fines
                   </button>
                 )}
+                <button 
+                  onClick={() => {
+                    setQRCodeData({ value: selectedUser.id, title: `User: ${selectedUser.fullName}` });
+                    setIsQRCodeModalOpen(true);
+                  }}
+                  className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl active:scale-95 transition-transform"
+                  title="Generate QR Code"
+                >
+                  <QrCode size={24} />
+                </button>
                 <button 
                   onClick={() => handleDeleteUser(selectedUser.id)}
                   className="p-4 bg-crimson/10 text-crimson rounded-2xl active:scale-95 transition-transform"
@@ -1676,6 +1820,7 @@ export default function App() {
               <button 
                 onClick={() => {
                   setUsers(users.map(u => u.id === selectedUser.id ? { ...u, outstandingFines: 0 } : u));
+                  setFines(fines.map(f => f.userId === selectedUser.id ? { ...f, status: 'Paid' } : f));
                   setIsFineModalOpen(false);
                 }}
                 className="btn-primary w-full"
@@ -1691,6 +1836,111 @@ export default function App() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal 
+        isOpen={isAddFineModalOpen} 
+        onClose={() => setIsAddFineModalOpen(false)} 
+        title="Add Manual Fine"
+      >
+        {selectedUser && (
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            const amount = Number(formData.get('amount'));
+            const reason = formData.get('reason') as string;
+            
+            const newFine: Fine = {
+              id: `f-${Math.random().toString(36).substr(2, 9)}`,
+              userId: selectedUser.id,
+              reason,
+              amount,
+              date: new Date().toISOString(),
+              status: 'Unpaid'
+            };
+            
+            setFines(prev => [newFine, ...prev]);
+            setUsers(prev => prev.map(u => u.id === selectedUser.id ? { 
+              ...u, 
+              outstandingFines: u.outstandingFines + amount 
+            } : u));
+            setIsAddFineModalOpen(false);
+          }} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase">Amount ({settings.currency})</label>
+              <input name="amount" type="number" required min="1" className="w-full bg-slate-50 dark:bg-slate-800 border border-black/5 dark:border-white/5 rounded-xl p-4 text-sm focus:outline-none dark:text-white" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase">Reason</label>
+              <textarea name="reason" required className="w-full bg-slate-50 dark:bg-slate-800 border border-black/5 dark:border-white/5 rounded-xl p-4 text-sm focus:outline-none dark:text-white h-24 resize-none" />
+            </div>
+            <button type="submit" className="btn-primary w-full mt-4">Add Fine</button>
+          </form>
+        )}
+      </Modal>
+
+      <Modal 
+        isOpen={isFineManagementOpen} 
+        onClose={() => setIsFineManagementOpen(false)} 
+        title="Fine Management"
+      >
+        <div className="flex flex-col gap-6">
+          <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            {(['Unpaid', 'Paid'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setFineFilter(status)}
+                className={cn(
+                  "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                  fineFilter === status 
+                    ? "bg-white dark:bg-slate-700 text-medium-indigo shadow-sm" 
+                    : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                {status} Fines
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
+            {fines.filter(f => f.status === fineFilter).length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
+                  <CreditCard size={24} />
+                </div>
+                <p className="text-sm text-slate-500">No {fineFilter.toLowerCase()} fines found.</p>
+              </div>
+            ) : (
+              fines.filter(f => f.status === fineFilter).map((fine) => {
+                const user = users.find(u => u.id === fine.userId);
+                const book = books.find(b => b.id === fine.bookId);
+                return (
+                  <div key={fine.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-black/5 dark:border-white/5 flex items-center justify-between">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.fullName || 'Unknown User'}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{book?.title || 'Unknown Book'}</p>
+                      <p className="text-[10px] text-slate-400">{format(parseISO(fine.date), 'dd MMM yyyy')}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <p className="text-sm font-black text-slate-900 dark:text-white">{settings.currency}{fine.amount}</p>
+                      {fine.status === 'Unpaid' && (
+                        <button 
+                          onClick={() => {
+                            setSelectedUser(user || null);
+                            setIsFineModalOpen(true);
+                          }}
+                          className="text-[10px] font-bold text-medium-indigo dark:text-indigo-400 px-2 py-1 bg-medium-indigo/10 rounded-lg"
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </Modal>
 
       <Modal 
@@ -1839,6 +2089,59 @@ export default function App() {
           </div>
           <button type="submit" className="btn-primary w-full mt-4">Register User</button>
         </form>
+      </Modal>
+      <Modal 
+        isOpen={isQRCodeModalOpen} 
+        onClose={() => setIsQRCodeModalOpen(false)} 
+        title="QR Code"
+      >
+        {qrCodeData && (
+          <div className="flex flex-col items-center gap-6 py-4">
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">{qrCodeData.title}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">ID: {qrCodeData.value}</p>
+            </div>
+            
+            <div className="p-6 bg-white rounded-3xl shadow-sm border border-slate-100">
+              <QRCodeSVG 
+                value={qrCodeData.value} 
+                size={200}
+                level="H"
+                includeMargin={true}
+              />
+            </div>
+            
+            <p className="text-xs text-slate-400 text-center max-w-[200px]">
+              Scan this code with the library scanner for quick identification.
+            </p>
+            
+            <button 
+              onClick={() => {
+                const svg = document.querySelector('.flex-col svg');
+                if (svg) {
+                  const svgData = new XMLSerializer().serializeToString(svg);
+                  const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+                  const img = new Image();
+                  img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx?.drawImage(img, 0, 0);
+                    const pngFile = canvas.toDataURL('image/png');
+                    const downloadLink = document.createElement('a');
+                    downloadLink.download = `${qrCodeData.title.replace(/[:\s]/g, '_')}_QR.png`;
+                    downloadLink.href = pngFile;
+                    downloadLink.click();
+                  };
+                  img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+                }
+              }}
+              className="btn-primary w-full mt-2"
+            >
+              Download QR Code
+            </button>
+          </div>
+        )}
       </Modal>
     </div>
   );

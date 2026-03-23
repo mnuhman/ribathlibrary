@@ -48,7 +48,8 @@ export interface Transaction {
 export interface Fine {
   id: string;
   userId: string;
-  bookId: string;
+  bookId?: string;
+  reason?: string;
   amount: number;
   date: string;
   status: 'Paid' | 'Unpaid';
