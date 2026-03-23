@@ -27,7 +27,8 @@ import {
   Mail,
   Calendar,
   Edit,
-  Trash2
+  Trash2,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -613,6 +614,41 @@ export default function App() {
     const [scanError, setScanError] = useState<string | null>(null);
     const [manualId, setManualId] = useState('');
     const [permissionState, setPermissionState] = useState<'granted' | 'prompt' | 'denied' | 'loading'>('loading');
+    const [showSuccessFlash, setShowSuccessFlash] = useState(false);
+
+    const playSuccessSound = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        
+        const audioCtx = new AudioContextClass();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+        oscillator.start(audioCtx.currentTime);
+        oscillator.stop(audioCtx.currentTime + 0.2);
+      } catch (e) {
+        console.error("Audio error:", e);
+      }
+    };
+
+    const triggerSuccessFeedback = () => {
+      setShowSuccessFlash(true);
+      if (navigator.vibrate) {
+        navigator.vibrate(200);
+      }
+      playSuccessSound();
+      setTimeout(() => setShowSuccessFlash(false), 500);
+    };
 
     const checkPermission = async () => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -663,10 +699,12 @@ export default function App() {
       const user = users.find(u => u.id === decodedText);
 
       if (book) {
+        triggerSuccessFeedback();
         setSelectedBook(book);
         setIsBookDetailsOpen(true);
         setManualId('');
       } else if (user) {
+        triggerSuccessFeedback();
         setSelectedUser(user);
         setIsFineModalOpen(user.outstandingFines > 0);
         setManualId('');
@@ -694,10 +732,12 @@ export default function App() {
             const user = users.find(u => u.id === decodedText);
 
             if (book) {
+              triggerSuccessFeedback();
               setSelectedBook(book);
               setIsBookDetailsOpen(true);
               setIsScanning(false);
             } else if (user) {
+              triggerSuccessFeedback();
               setSelectedUser(user);
               setIsFineModalOpen(user.outstandingFines > 0);
               setIsScanning(false);
@@ -734,7 +774,26 @@ export default function App() {
     }, [isScanning]);
 
     return (
-      <div className="flex flex-col items-center justify-center gap-8 h-[calc(100vh-160px)] px-6">
+      <div className="flex flex-col items-center justify-center gap-8 h-[calc(100vh-160px)] px-6 relative overflow-hidden">
+        <AnimatePresence>
+          {showSuccessFlash && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-emerald-500/20 z-50 pointer-events-none flex items-center justify-center"
+            >
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-white dark:bg-slate-900 p-6 rounded-full shadow-2xl"
+              >
+                <Check size={48} className="text-emerald-500" />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {scanError && (
           <div className="w-full bg-crimson/10 border border-crimson/20 p-4 rounded-2xl text-crimson text-sm flex items-center gap-3">
             <AlertCircle size={20} />
